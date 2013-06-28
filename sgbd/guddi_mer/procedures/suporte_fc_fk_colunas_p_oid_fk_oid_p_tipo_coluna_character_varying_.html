@@ -1,0 +1,67 @@
+<HTML>
+<Header>
+<Title>suporte.fc_fk_colunas(p_oid_fk oid, p_tipo_coluna character varying) - Procedure</Title>
+<meta content="text/html; charset=UTF-8" http-equiv="Content-Type">
+<Link href="../css/doc.css" rel="stylesheet" type="text/css">
+</Header>
+<Body>
+<table class="logo">
+<tr>
+<td class="logo">guddi [mer.xml]</td>
+</tr>
+</table>
+<table class="horzMenu">
+<tr>
+<td class="horzMenu"><a class="horzMenu" href="../index.html"> Home</a></td><td class="horzMenu">|</td><td class="horzMenu"><a class="horzMenu" href="../tables/index.html">Tables</a></td><td class="horzMenu">|</td><td class="horzMenu"><a class="horzMenu" href="../schemas/index.html">Schemas</a></td><td class="horzMenu">|</td><td class="horzMenu"><a class="horzMenu" href="../diagrams/index.html">Diagrams</a></td><td class="horzMenu">|</td><td class="horzMenu"><a class="horzMenu" href="../foreignKeys/index.html">Foreign Keys</a></td><td class="horzMenu">|</td><td class="horzMenu"><a class="horzMenu" href="../indexes/index.html">Indexes</a></td><td class="horzMenuFiller"></td>
+</tr>
+</table>
+<hr>
+<table class="flat">
+<tr class="banner">
+<td class="title_nm">suporte.fc_fk_colunas(p_oid_fk oid, p_tipo_coluna character varying)</td><td class="watermark_right">(Procedure)</td>
+</tr>
+<tr>
+<td class="key">Name</td><td class="value">suporte.fc_fk_colunas(p_oid_fk oid, p_tipo_coluna character varying)</td>
+</tr>
+<tr>
+<td class="key">Comment</td><td class="value"> </td>
+</tr>
+<tr>
+<td class="key">Src</td><td class="value">
+<pre>CREATE OR REPLACE FUNCTION suporte.fc_fk_colunas(p_oid_fk oid, p_tipo_coluna character varying) 
+  RETURNS SETOF integer AS 
+$$
+declare
+  r_fk record;
+begin
+  -- Tipo coluna: fk -&gt; Foreign key; pk -&gt; primary key
+  -- Obtem o constraint de Foreign key
+  select conkey, confkey into r_fk
+  from pg_catalog.pg_constraint c
+  where c.oid = p_oid_fk;
+
+  -- Obtem as coluas
+  if p_tipo_coluna = 'fk' then
+    for I in array_lower(r_fk.conkey, 1)..array_upper(r_fk.conkey, 1) loop
+      return next r_fk.conkey[I];
+    end loop;
+  elsif p_tipo_coluna = 'pk' then
+    for I in array_lower(r_fk.confkey, 1)..array_upper(r_fk.confkey, 1) loop
+      return next r_fk.confkey[I];
+    end loop;
+  else
+    return next null;  
+  end if;
+
+  -- retorna o resultado
+  return;
+end;
+$$
+  LANGUAGE plpgsql VOLATILE 
+  COST 100
+  ROWS 1000;</pre>
+</td>
+</tr>
+</table>
+</Body>
+</HTML>

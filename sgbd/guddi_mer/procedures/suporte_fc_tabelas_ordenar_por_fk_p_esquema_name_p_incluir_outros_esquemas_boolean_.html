@@ -1,0 +1,248 @@
+<HTML>
+<Header>
+<Title>suporte.fc_tabelas_ordenar_por_fk(p_esquema name, p_incluir_outros_esquemas boolean) - Procedure</Title>
+<meta content="text/html; charset=UTF-8" http-equiv="Content-Type">
+<Link href="../css/doc.css" rel="stylesheet" type="text/css">
+</Header>
+<Body>
+<table class="logo">
+<tr>
+<td class="logo">guddi [mer.xml]</td>
+</tr>
+</table>
+<table class="horzMenu">
+<tr>
+<td class="horzMenu"><a class="horzMenu" href="../index.html"> Home</a></td><td class="horzMenu">|</td><td class="horzMenu"><a class="horzMenu" href="../tables/index.html">Tables</a></td><td class="horzMenu">|</td><td class="horzMenu"><a class="horzMenu" href="../schemas/index.html">Schemas</a></td><td class="horzMenu">|</td><td class="horzMenu"><a class="horzMenu" href="../diagrams/index.html">Diagrams</a></td><td class="horzMenu">|</td><td class="horzMenu"><a class="horzMenu" href="../foreignKeys/index.html">Foreign Keys</a></td><td class="horzMenu">|</td><td class="horzMenu"><a class="horzMenu" href="../indexes/index.html">Indexes</a></td><td class="horzMenuFiller"></td>
+</tr>
+</table>
+<hr>
+<table class="flat">
+<tr class="banner">
+<td class="title_nm">suporte.fc_tabelas_ordenar_por_fk(p_esquema name, p_incluir_outros_esquemas boolean)</td><td class="watermark_right">(Procedure)</td>
+</tr>
+<tr>
+<td class="key">Name</td><td class="value">suporte.fc_tabelas_ordenar_por_fk(p_esquema name, p_incluir_outros_esquemas boolean)</td>
+</tr>
+<tr>
+<td class="key">Comment</td><td class="value"> </td>
+</tr>
+<tr>
+<td class="key">Src</td><td class="value">
+<pre>CREATE OR REPLACE FUNCTION suporte.fc_tabelas_ordenar_por_fk(p_esquema name, p_incluir_outros_esquemas boolean) 
+  RETURNS SETOF suporte.type_fc_tabelas_ordenar_por_fk AS 
+$$
+declare 
+  r_tabela record;
+  r_tmp record;
+  r_filho record;
+  r_pai record;
+  r_atual record;
+  v_repete boolean default false;
+  v_iteracao integer default 0;
+  v_iteracao_max integer default 0;
+begin
+  -- prepara a tabela de apoio
+  drop table if exists tmp_tabelas;
+  create local temporary table tmp_tabelas (
+    id serial primary key,
+    oid oid not null,
+    banco name not null,
+    esquema name not null,
+    nome name not null,
+    id_anterior integer,
+    id_proximo integer,
+    auto_fk boolean default false,
+    fk_ciclica boolean default false,
+    ordem integer
+  );
+
+  -- seleciona as tabelas do esquema
+  insert into tmp_tabelas
+    (oid, banco, esquema, nome)
+  with 
+    ns (oid, nspname) 
+    as (
+      select oid, nspname 
+      from pg_catalog.pg_namespace
+    )
+  select
+    c.oid, t.table_catalog, t.table_schema, t.table_name
+  from 
+    information_schema.tables t 
+    join  ns on ns.nspname = t.table_schema
+      join pg_catalog.pg_class c on c.relname = t.table_name and c.relnamespace = ns.oid
+        left join suporte.vw_tabelas_fk fk on fk.oid_tabela = c.oid
+  where 
+    t.table_type = upper('base table') and
+    ns.nspname = p_esquema
+  group by c.oid, t.table_catalog, t.table_schema, t.table_name
+  order by count(oid_referencia);
+
+  -- obtem as tabelas relacionadas de outros esquemas e suas dependencias
+  if p_incluir_outros_esquemas then
+    loop
+      insert into tmp_tabelas
+        (oid, banco, esquema, nome)
+      select distinct on (v.oid_referencia) 
+        v.oid_referencia, v.banco_referencia, v.esquema_referencia, v.nome_referencia
+      from 
+        tmp_tabelas t
+        join suporte.vw_tabelas_fk v on v.oid_tabela = t.oid
+      where
+        v.oid_referencia not in (select oid from tmp_tabelas);
+
+      exit when not found;
+    end loop;
+  end if;
+
+  -- verifica se tem auto relacionamento
+  update tmp_tabelas t set
+    auto_fk = true
+  from suporte.vw_tabelas_fk v
+  where
+    v.oid_tabela = v.oid_referencia and
+    v.oid_tabela = t.oid;
+
+  -- verifica se tem referencia ciclica
+  update tmp_tabelas t set
+    fk_ciclica = exists (
+      select 1
+      from 
+        suporte.vw_tabelas_fk fk
+        join suporte.vw_tabelas_fk kf on kf.oid_tabela = fk.oid_referencia and kf.oid_referencia = fk.oid_tabela
+      where 
+        fk.oid_tabela &lt;&gt; fk.oid_referencia and
+        fk.oid_tabela = t.oid
+    );
+
+  -- monta a lista inicial
+  select min(id) as min, max(id) as max into r_atual
+  from tmp_tabelas;
+  update tmp_tabelas set
+    id_anterior = case when id = r_atual.min then null else id - 1 end,
+    id_proximo = case when id = r_atual.max then null else id + 1 end,
+    ordem = id;
+
+  -- arruma a lista de tabelas de acordo com os relacionamentos
+  -- calcula o numero maximo de iteracoes para evitar dead lock
+
+  select max(id) * 5 into v_iteracao_max
+  from tmp_tabelas
+  where not fk_ciclica;
+
+  loop
+    v_iteracao := v_iteracao + 1;
+    v_repete := false;
+    -- obtem o primeiro item da lista
+    select id, oid, id_anterior, id_proximo, fk_ciclica, ordem, false as trocar, nome into r_filho
+    from tmp_tabelas
+    where id_anterior is null;
+    loop
+      for r_pai in
+        select t.id, t.oid, t.id_anterior, t.id_proximo, t.fk_ciclica, fk.oid_fk, t.nome, fk.nome_fk
+        from 
+          suporte.vw_tabelas_fk fk
+          join tmp_tabelas t on t.oid = fk.oid_referencia
+        where
+          fk.oid_tabela = r_filho.oid and
+          t.ordem &gt; r_filho.ordem
+        order by t.ordem desc
+      loop
+        if r_filho.fk_ciclica and r_pai.fk_ciclica then
+          r_filho.trocar := exists(
+            select 1
+            from
+              suporte.vw_tabelas_fk fk
+              join information_schema.columns c on c.table_schema = fk.esquema_tabela and c.table_name = fk.nome_tabela
+            where 
+              fk.oid_tabela = r_filho.oid and 
+              fk.oid_referencia = r_pai.oid and
+              c.ordinal_position in (select * from suporte.fc_fk_colunas(r_pai.oid_fk, 'fk')) and
+              c.is_nullable = 'no'
+          );
+        else
+          r_filho.trocar := true;
+        end if;
+
+        if r_filho.trocar then
+          -- tira o filho da lista
+          -- atualiza o item anterior ao filho
+          update tmp_tabelas set
+            id_proximo = r_filho.id_proximo
+          where id = r_filho.id_anterior;
+
+          -- atualiza o item posterior ao filho
+          update tmp_tabelas set
+            id_anterior = r_filho.id_anterior
+          where id = r_filho.id_proximo;
+
+          -- recoloca o filho na lista apos o pai
+          -- atualiza o item filho
+          update tmp_tabelas set
+            id_anterior = r_pai.id,
+            id_proximo = r_pai.id_proximo
+          where id = r_filho.id;
+
+          -- atualiza o item pai
+          update tmp_tabelas set
+            id_proximo = r_filho.id
+          where id = r_pai.id;
+
+          -- atualiza o item posterior ao pai
+          update tmp_tabelas set
+            id_anterior = r_filho.id
+          where id = r_pai.id_proximo;
+        end if; -- if r_filho.trocar then
+
+        -- se houve troca pode sair
+        exit when r_filho.trocar;
+      end loop;     
+      exit when r_filho.trocar or r_filho.id_proximo is null;
+      -- obtem o proximo item da lista
+      select id, oid, id_anterior, id_proximo, fk_ciclica, ordem, false as trocar, nome into r_filho
+      from tmp_tabelas
+      where id = r_filho.id_proximo;
+    end loop;
+    
+    -- ordena as tabelas de acordo com a lista
+    -- obtem o primeiro item da lista
+    select id, id_proximo, 1 as ordem into r_atual
+    from tmp_tabelas
+    where id_anterior is null;
+    loop
+      update tmp_tabelas set
+        ordem = r_atual.ordem
+      where 
+        id = r_atual.id and
+        ordem &lt;&gt; r_atual.ordem;
+      if found then
+        v_repete := true;
+      end if;
+      
+      -- obtem o proximo item
+      exit when r_atual.id_proximo is null;
+      select id, id_proximo, r_atual.ordem + 1 as ordem into r_atual
+      from tmp_tabelas
+      where id = r_atual.id_proximo;
+    end loop; -- ordena as tabelas de acordo com a lista
+
+    exit when not v_repete or v_iteracao = v_iteracao_max;
+  end loop; -- arruma a lista de tabelas de acordo com os relacionamentos
+
+  -- retorna o resultado
+  return query
+    select ordem, banco, esquema, nome, oid, auto_fk, fk_ciclica
+    from tmp_tabelas
+    order by ordem;
+  return;
+
+end;
+$$
+  LANGUAGE plpgsql VOLATILE 
+  COST 100
+  ROWS 1000;</pre>
+</td>
+</tr>
+</table>
+</Body>
+</HTML>

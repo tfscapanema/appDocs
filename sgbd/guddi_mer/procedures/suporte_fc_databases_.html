@@ -1,0 +1,54 @@
+<HTML>
+<Header>
+<Title>suporte.fc_databases() - Procedure</Title>
+<meta content="text/html; charset=UTF-8" http-equiv="Content-Type">
+<Link href="../css/doc.css" rel="stylesheet" type="text/css">
+</Header>
+<Body>
+<table class="logo">
+<tr>
+<td class="logo">guddi [mer.xml]</td>
+</tr>
+</table>
+<table class="horzMenu">
+<tr>
+<td class="horzMenu"><a class="horzMenu" href="../index.html"> Home</a></td><td class="horzMenu">|</td><td class="horzMenu"><a class="horzMenu" href="../tables/index.html">Tables</a></td><td class="horzMenu">|</td><td class="horzMenu"><a class="horzMenu" href="../schemas/index.html">Schemas</a></td><td class="horzMenu">|</td><td class="horzMenu"><a class="horzMenu" href="../diagrams/index.html">Diagrams</a></td><td class="horzMenu">|</td><td class="horzMenu"><a class="horzMenu" href="../foreignKeys/index.html">Foreign Keys</a></td><td class="horzMenu">|</td><td class="horzMenu"><a class="horzMenu" href="../indexes/index.html">Indexes</a></td><td class="horzMenuFiller"></td>
+</tr>
+</table>
+<hr>
+<table class="flat">
+<tr class="banner">
+<td class="title_nm">suporte.fc_databases()</td><td class="watermark_right">(Procedure)</td>
+</tr>
+<tr>
+<td class="key">Name</td><td class="value">suporte.fc_databases()</td>
+</tr>
+<tr>
+<td class="key">Comment</td><td class="value"> </td>
+</tr>
+<tr>
+<td class="key">Src</td><td class="value">
+<pre>CREATE OR REPLACE FUNCTION suporte.fc_databases() 
+  RETURNS TABLE(database name, owner name, character_set name) AS 
+$$
+begin
+  return query  
+		select 
+		  datname, u.usename, lower(pg_encoding_to_char(encoding))::name
+		from 
+		  pg_database d
+		  join pg_user u on u.usesysid = d.datdba
+		where
+		  datname not in ('template1', 'template0', 'postgres');  
+
+  return;
+end;
+$$
+  LANGUAGE plpgsql VOLATILE 
+  COST 100
+  ROWS 1000;</pre>
+</td>
+</tr>
+</table>
+</Body>
+</HTML>

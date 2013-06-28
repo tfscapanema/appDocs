@@ -1,0 +1,70 @@
+<HTML>
+<Header>
+<Title>suporte.fc_tabela_colunas(IN p_esquema name, IN p_tabela name, IN p_coluna name) - Procedure</Title>
+<meta content="text/html; charset=UTF-8" http-equiv="Content-Type">
+<Link href="../css/doc.css" rel="stylesheet" type="text/css">
+</Header>
+<Body>
+<table class="logo">
+<tr>
+<td class="logo">guddi [mer.xml]</td>
+</tr>
+</table>
+<table class="horzMenu">
+<tr>
+<td class="horzMenu"><a class="horzMenu" href="../index.html"> Home</a></td><td class="horzMenu">|</td><td class="horzMenu"><a class="horzMenu" href="../tables/index.html">Tables</a></td><td class="horzMenu">|</td><td class="horzMenu"><a class="horzMenu" href="../schemas/index.html">Schemas</a></td><td class="horzMenu">|</td><td class="horzMenu"><a class="horzMenu" href="../diagrams/index.html">Diagrams</a></td><td class="horzMenu">|</td><td class="horzMenu"><a class="horzMenu" href="../foreignKeys/index.html">Foreign Keys</a></td><td class="horzMenu">|</td><td class="horzMenu"><a class="horzMenu" href="../indexes/index.html">Indexes</a></td><td class="horzMenuFiller"></td>
+</tr>
+</table>
+<hr>
+<table class="flat">
+<tr class="banner">
+<td class="title_nm">suporte.fc_tabela_colunas(IN p_esquema name, IN p_tabela name, IN p_coluna name)</td><td class="watermark_right">(Procedure)</td>
+</tr>
+<tr>
+<td class="key">Name</td><td class="value">suporte.fc_tabela_colunas(IN p_esquema name, IN p_tabela name, IN p_coluna name)</td>
+</tr>
+<tr>
+<td class="key">Comment</td><td class="value"> </td>
+</tr>
+<tr>
+<td class="key">Src</td><td class="value">
+<pre>CREATE OR REPLACE FUNCTION suporte.fc_tabela_colunas(IN p_esquema name, IN p_tabela name, IN p_coluna name) 
+  RETURNS TABLE(ordem integer, nome character varying, tipo character varying, valor_padrao character varying, permite_nulo boolean, posicao_pk integer) AS 
+$$
+begin
+  return query
+    select 
+      cast(c.ordinal_position as integer), 
+			cast(c.column_name as varchar), 
+      coalesce(
+        c.domain_name,
+        case 
+          when c.udt_name in ('int4', 'int8') then c.data_type
+          when c.udt_name = 'varchar' then 'varchar(' || character_maximum_length || ')'
+          when c.udt_name = 'bpchar' then 'char(' || character_maximum_length || ')'
+          when c.udt_name = 'numeric' then 'numeric(' || numeric_precision || ',' || numeric_scale || ')'
+          else c.udt_name
+        end
+      ), 
+      cast(c.column_default as varchar), 
+			cast(c.is_nullable as boolean),
+      cast(kcu.ordinal_position as integer)
+    from
+      information_schema.columns c
+        left join information_schema.table_constraints tc on tc.table_schema = c.table_schema and tc.table_name = c.table_name and tc.constraint_type = 'PRIMARY KEY'
+          left join information_schema.key_column_usage kcu on kcu.constraint_schema = tc.constraint_schema and kcu.constraint_name = tc.constraint_name and kcu.column_name = c.column_name
+    where 
+      c.table_schema = p_esquema and 
+      c.table_name = p_tabela and
+      (p_coluna is null or c.column_name = p_coluna);
+  return;
+end;
+$$
+  LANGUAGE plpgsql VOLATILE 
+  COST 100
+  ROWS 1000;</pre>
+</td>
+</tr>
+</table>
+</Body>
+</HTML>
